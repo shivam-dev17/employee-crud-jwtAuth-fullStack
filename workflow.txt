@@ -1,0 +1,619 @@
+================================================================================
+        EMPLOYEE REST API - PROJECT WORKFLOW DOCUMENT
+        Spring Boot + JWT Authentication + Oracle 21c
+================================================================================
+
+Date Created : 01-May-2026
+Last Updated : 04-May-2026
+Technology   : Java 17, Spring Boot 3.2.5, Maven, Oracle 21c
+Author       : Auto-Generated
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+This project is a Spring Boot REST API application that provides CRUD 
+(Create, Read, Update, Delete) operations for an Employee management system.
+The API is secured using JWT (JSON Web Token) authentication. Oracle 21c is 
+used as the backend database.
+
+The API also supports server-side pagination with search & sorting, and 
+data export capabilities in CSV and XLSX (Excel) formats.
+
+================================================================================
+2. TECHNOLOGY STACK
+================================================================================
+
+  - Language         : Java 17
+  - Framework        : Spring Boot 3.2.5
+  - Build Tool       : Maven
+  - Database         : Oracle 21c (XEPDB1)
+  - Security         : Spring Security 6 + JWT (jjwt 0.12.5)
+  - ORM              : Hibernate / Spring Data JPA
+  - Validation       : Jakarta Bean Validation
+  - Utility          : Lombok
+  - Excel Export     : Apache POI 5.2.5 (poi-ooxml)
+
+================================================================================
+3. PROJECT STRUCTURE
+================================================================================
+
+  mcp_server/
+  ├── pom.xml
+  ├── workflow.txt
+  └── src/
+      ├── main/
+      │   ├── java/com/example/employeeapi/
+      │   │   ├── EmployeeApiApplication.java          [Main Entry Point]
+      │   │   ├── config/
+      │   │   │   └── SecurityConfig.java              [Spring Security Configuration]
+      │   │   ├── controller/
+      │   │   │   ├── AuthController.java              [Authentication Endpoints]
+      │   │   │   └── EmployeeController.java          [CRUD + Pagination + Export]
+      │   │   ├── dto/
+      │   │   │   ├── ApiResponse.java                 [Generic API Response Wrapper]
+      │   │   │   ├── AuthRequest.java                 [Login/Register Request DTO]
+      │   │   │   ├── AuthResponse.java                [Login Response with Token]
+      │   │   │   ├── EmployeeDto.java                 [Employee Data Transfer Object]
+      │   │   │   └── PaginatedResponse.java           [Paginated Response Wrapper]
+      │   │   ├── entity/
+      │   │   │   ├── Employee.java                    [Employee JPA Entity]
+      │   │   │   └── User.java                        [User JPA Entity]
+      │   │   ├── exception/
+      │   │   │   ├── GlobalExceptionHandler.java      [Centralized Exception Handling]
+      │   │   │   └── ResourceNotFoundException.java   [Custom 404 Exception]
+      │   │   ├── repository/
+      │   │   │   ├── EmployeeRepository.java          [Employee Data Access Layer]
+      │   │   │   └── UserRepository.java              [User Data Access Layer]
+      │   │   ├── security/
+      │   │   │   ├── CustomUserDetailsService.java    [User Authentication Service]
+      │   │   │   ├── JwtAuthenticationEntryPoint.java [Unauthorized Handler]
+      │   │   │   ├── JwtAuthenticationFilter.java     [JWT Request Filter]
+      │   │   │   └── JwtTokenProvider.java            [JWT Token Utility]
+      │   │   └── service/
+      │   │       ├── EmployeeService.java             [Service Interface]
+      │   │       ├── EmployeeServiceImpl.java         [Service Implementation]
+      │   │       └── ExportService.java               [CSV & Excel Export Service]
+      │   └── resources/
+      │       └── application.properties               [App Configuration]
+      └── test/
+          └── java/com/example/employeeapi/
+              └── EmployeeApiApplicationTests.java     [Unit Test]
+
+================================================================================
+4. DATABASE TABLES (Auto-created by Hibernate)
+================================================================================
+
+  TABLE: EMPLOYEES
+  ┌─────────────────┬──────────────┬──────────────────────────────────┐
+  │ Column          │ Type         │ Constraints                      │
+  ├─────────────────┼──────────────┼──────────────────────────────────┤
+  │ EMP_ID          │ NUMBER       │ PRIMARY KEY, AUTO INCREMENT      │
+  │ FIRST_NAME      │ VARCHAR(50)  │ NOT NULL                         │
+  │ LAST_NAME       │ VARCHAR(50)  │ NOT NULL                         │
+  │ EMAIL           │ VARCHAR(100) │ NOT NULL, UNIQUE                 │
+  │ PHONE_NUMBER    │ VARCHAR(15)  │                                  │
+  │ DEPARTMENT      │ VARCHAR(100) │                                  │
+  │ DESIGNATION     │ VARCHAR(100) │                                  │
+  │ SALARY          │ NUMBER       │                                  │
+  │ HIRE_DATE       │ DATE         │                                  │
+  │ CREATED_AT      │ TIMESTAMP    │ Auto-set on create               │
+  │ UPDATED_AT      │ TIMESTAMP    │ Auto-set on create/update        │
+  └─────────────────┴──────────────┴──────────────────────────────────┘
+
+  TABLE: APP_USERS
+  ┌─────────────────┬──────────────┬──────────────────────────────────┐
+  │ Column          │ Type         │ Constraints                      │
+  ├─────────────────┼──────────────┼──────────────────────────────────┤
+  │ USER_ID         │ NUMBER       │ PRIMARY KEY, AUTO INCREMENT      │
+  │ USERNAME        │ VARCHAR(50)  │ NOT NULL, UNIQUE                 │
+  │ PASSWORD        │ VARCHAR(255) │ NOT NULL (BCrypt Hashed)         │
+  │ ROLE            │ VARCHAR(20)  │ Default: ROLE_USER               │
+  │ ENABLED         │ NUMBER(1)    │ Default: 1 (true)                │
+  │ CREATED_AT      │ TIMESTAMP    │ Auto-set on create               │
+  └─────────────────┴──────────────┴──────────────────────────────────┘
+
+================================================================================
+5. APPLICATION WORKFLOW
+================================================================================
+
+  Step 1: User Registration
+  ─────────────────────────
+    → Client sends POST /api/auth/register with username & password
+    → Server validates input, hashes password with BCrypt
+    → Saves user to APP_USERS table in Oracle 21c
+    → Returns success/failure response
+
+  Step 2: User Login (JWT Generation)
+  ────────────────────────────────────
+    → Client sends POST /api/auth/login with username & password
+    → Spring Security authenticates credentials against Oracle DB
+    → On success, JwtTokenProvider generates a JWT token (HS256)
+    → Token is returned in the response body
+    → Token is valid for 24 hours (configurable)
+
+  Step 3: Accessing Protected Endpoints
+  ──────────────────────────────────────
+    → Client includes JWT in request header: Authorization: Bearer <token>
+    → JwtAuthenticationFilter intercepts every request
+    → Extracts and validates the JWT token
+    → If valid, sets the user in SecurityContext
+    → Request proceeds to the controller
+    → If invalid/missing, JwtAuthenticationEntryPoint returns 401
+
+  Step 4: Employee CRUD Operations
+  ─────────────────────────────────
+    → All /api/employees/** endpoints require valid JWT
+    → Controller receives request → delegates to Service layer
+    → Service processes business logic → calls Repository
+    → Repository interacts with Oracle 21c via JPA/Hibernate
+    → Response is wrapped in ApiResponse and returned
+
+  Step 5: Paginated Data Access
+  ─────────────────────────────
+    → Client sends GET /api/employees/page with query parameters
+    → Parameters: page, size, sortBy, sortDir, search (optional)
+    → Service delegates to Repository using Spring Data Pageable
+    → If search keyword is provided, JPQL LIKE query filters across
+      firstName, lastName, email, department, designation
+    → Response wrapped in PaginatedResponse with metadata
+      (totalElements, totalPages, first, last, etc.)
+
+  Step 6: Data Export (CSV / Excel)
+  ─────────────────────────────────
+    → Client sends GET /api/employees/export/csv or /export/excel
+    → ExportService fetches all employees from Oracle 21c
+    → For CSV: Generates comma-separated text with proper escaping
+    → For XLSX: Uses Apache POI to create styled Excel workbook
+      (bold headers, colored background, auto-sized columns)
+    → File is streamed as a downloadable attachment
+
+================================================================================
+6. API ENDPOINTS
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │                      AUTHENTICATION ENDPOINTS (PUBLIC)                     │
+  ├────────┬──────────────────────────┬────────────────────────────────────────┤
+  │ Method │ URL                      │ Description                            │
+  ├────────┼──────────────────────────┼────────────────────────────────────────┤
+  │ POST   │ /api/auth/register       │ Register a new user                    │
+  │ POST   │ /api/auth/login          │ Login and receive JWT token            │
+  └────────┴──────────────────────────┴────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │              EMPLOYEE ENDPOINTS (PROTECTED - JWT REQUIRED)                 │
+  ├────────┬──────────────────────────────────────────────┬────────────────────┤
+  │ Method │ URL                                          │ Description        │
+  ├────────┼──────────────────────────────────────────────┼────────────────────┤
+  │ POST   │ /api/employees                               │ Create employee    │
+  │ GET    │ /api/employees                               │ Get all employees  │
+  │ GET    │ /api/employees/{id}                          │ Get by ID          │
+  │ PUT    │ /api/employees/{id}                          │ Update by ID       │
+  │ DELETE │ /api/employees/{id}                          │ Delete by ID       │
+  │ GET    │ /api/employees/department/{dept}             │ Get by department  │
+  └────────┴──────────────────────────────────────────────┴────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │          PAGINATION ENDPOINTS (PROTECTED - JWT REQUIRED)                  │
+  ├────────┬──────────────────────────────────────────────┬────────────────────┤
+  │ Method │ URL                                          │ Description        │
+  ├────────┼──────────────────────────────────────────────┼────────────────────┤
+  │ GET    │ /api/employees/page                          │ Paginated list     │
+  │        │   ?page=0&size=10&sortBy=id&sortDir=asc      │   with search      │
+  │        │   &search=keyword                            │                    │
+  │ GET    │ /api/employees/department/{dept}/page         │ Paginated by dept  │
+  │        │   ?page=0&size=10&sortBy=id&sortDir=asc      │                    │
+  └────────┴──────────────────────────────────────────────┴────────────────────┘
+
+  Pagination Query Parameters:
+    │ Parameter │ Default │ Description                                       │
+    ├───────────┼─────────┼───────────────────────────────────────────────────┤
+    │ page      │ 0       │ Zero-based page index                             │
+    │ size      │ 10      │ Number of records per page                        │
+    │ sortBy    │ id      │ Field to sort (id, firstName, lastName, email,    │
+    │           │         │ department, designation, salary, hireDate)        │
+    │ sortDir   │ asc     │ Sort direction: asc or desc                       │
+    │ search    │ (none)  │ Optional keyword — matches firstName, lastName,   │
+    │           │         │ email, department, designation (case-insensitive) │
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │           EXPORT ENDPOINTS (PROTECTED - JWT REQUIRED)                     │
+  ├────────┬──────────────────────────────────────────────┬────────────────────┤
+  │ Method │ URL                                          │ Description        │
+  ├────────┼──────────────────────────────────────────────┼────────────────────┤
+  │ GET    │ /api/employees/export/csv                    │ Download CSV file  │
+  │ GET    │ /api/employees/export/excel                  │ Download XLSX file │
+  └────────┴──────────────────────────────────────────────┴────────────────────┘
+
+================================================================================
+7. SAMPLE API REQUESTS & RESPONSES
+================================================================================
+
+  7.1  REGISTER USER
+  ──────────────────
+  Request:
+    POST http://localhost:8080/api/auth/register
+    Content-Type: application/json
+
+    {
+      "username": "admin",
+      "password": "admin123"
+    }
+
+  Response (201 Created):
+    {
+      "success": true,
+      "message": "User registered successfully",
+      "timestamp": "2026-05-01T23:00:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.2  LOGIN USER
+  ───────────────
+  Request:
+    POST http://localhost:8080/api/auth/login
+    Content-Type: application/json
+
+    {
+      "username": "admin",
+      "password": "admin123"
+    }
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Login successful",
+      "data": {
+        "token": "eyJhbGciOiJIUzI1NiJ9...",
+        "tokenType": "Bearer",
+        "username": "admin",
+        "role": "ROLE_USER"
+      },
+      "timestamp": "2026-05-01T23:00:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.3  CREATE EMPLOYEE
+  ────────────────────
+  Request:
+    POST http://localhost:8080/api/employees
+    Content-Type: application/json
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+    {
+      "firstName": "Rahul",
+      "lastName": "Sharma",
+      "email": "rahul.sharma@example.com",
+      "phoneNumber": "9876543210",
+      "department": "Engineering",
+      "designation": "Software Engineer",
+      "salary": 75000.00,
+      "hireDate": "2026-01-15"
+    }
+
+  Response (201 Created):
+    {
+      "success": true,
+      "message": "Employee created successfully",
+      "data": {
+        "id": 1,
+        "firstName": "Rahul",
+        "lastName": "Sharma",
+        "email": "rahul.sharma@example.com",
+        "phoneNumber": "9876543210",
+        "department": "Engineering",
+        "designation": "Software Engineer",
+        "salary": 75000.0,
+        "hireDate": "2026-01-15"
+      },
+      "timestamp": "2026-05-01T23:05:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.4  GET ALL EMPLOYEES
+  ──────────────────────
+  Request:
+    GET http://localhost:8080/api/employees
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employees fetched successfully",
+      "data": [ ... list of employees ... ],
+      "timestamp": "2026-05-01T23:06:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.5  GET EMPLOYEE BY ID
+  ───────────────────────
+  Request:
+    GET http://localhost:8080/api/employees/1
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employee fetched successfully",
+      "data": { ... employee object ... },
+      "timestamp": "2026-05-01T23:07:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.6  UPDATE EMPLOYEE
+  ────────────────────
+  Request:
+    PUT http://localhost:8080/api/employees/1
+    Content-Type: application/json
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+    {
+      "firstName": "Rahul",
+      "lastName": "Sharma",
+      "email": "rahul.sharma@example.com",
+      "phoneNumber": "9876543210",
+      "department": "Engineering",
+      "designation": "Senior Software Engineer",
+      "salary": 95000.00,
+      "hireDate": "2026-01-15"
+    }
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employee updated successfully",
+      "data": { ... updated employee ... },
+      "timestamp": "2026-05-01T23:08:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.7  DELETE EMPLOYEE
+  ────────────────────
+  Request:
+    DELETE http://localhost:8080/api/employees/1
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employee deleted successfully",
+      "timestamp": "2026-05-01T23:09:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.8  GET EMPLOYEES BY DEPARTMENT
+  ────────────────────────────────
+  Request:
+    GET http://localhost:8080/api/employees/department/Engineering
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employees fetched by department",
+      "data": [ ... filtered employees ... ],
+      "timestamp": "2026-05-01T23:10:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.9  GET EMPLOYEES (PAGINATED WITH SEARCH)
+  ───────────────────────────────────────────
+  Request:
+    GET http://localhost:8080/api/employees/page?page=0&size=5&sortBy=firstName&sortDir=asc&search=rahul
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employees fetched successfully",
+      "data": [
+        {
+          "id": 1,
+          "firstName": "Rahul",
+          "lastName": "Sharma",
+          "email": "rahul.sharma@example.com",
+          "phoneNumber": "9876543210",
+          "department": "Engineering",
+          "designation": "Software Engineer",
+          "salary": 75000.0,
+          "hireDate": "2026-01-15"
+        }
+      ],
+      "pageNumber": 0,
+      "pageSize": 5,
+      "totalElements": 1,
+      "totalPages": 1,
+      "first": true,
+      "last": true,
+      "timestamp": "2026-05-04T10:00:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.10  GET EMPLOYEES BY DEPARTMENT (PAGINATED)
+  ─────────────────────────────────────────────
+  Request:
+    GET http://localhost:8080/api/employees/department/Engineering/page?page=0&size=10&sortBy=salary&sortDir=desc
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    {
+      "success": true,
+      "message": "Employees fetched by department (paginated)",
+      "data": [ ... employees in Engineering ... ],
+      "pageNumber": 0,
+      "pageSize": 10,
+      "totalElements": 25,
+      "totalPages": 3,
+      "first": true,
+      "last": false,
+      "timestamp": "2026-05-04T10:01:00"
+    }
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.11  DOWNLOAD EMPLOYEES AS CSV
+  ───────────────────────────────
+  Request:
+    GET http://localhost:8080/api/employees/export/csv
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    Content-Type: text/csv
+    Content-Disposition: attachment; filename=employees_20260504.csv
+
+    (Downloads a CSV file with content like:)
+    ID,First Name,Last Name,Email,Phone Number,Department,Designation,Salary,Hire Date
+    1,Rahul,Sharma,rahul.sharma@example.com,9876543210,Engineering,Software Engineer,75000.0,2026-01-15
+    2,Priya,Patel,priya.patel@example.com,9876543211,HR,HR Manager,85000.0,2025-06-10
+    ...
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.12  DOWNLOAD EMPLOYEES AS EXCEL (XLSX)
+  ────────────────────────────────────────
+  Request:
+    GET http://localhost:8080/api/employees/export/excel
+    Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+  Response (200 OK):
+    Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    Content-Disposition: attachment; filename=employees_20260504.xlsx
+
+    (Downloads a styled .xlsx file with:)
+    - Bold headers with colored background
+    - Auto-sized columns
+    - All employee data in rows
+
+  ──────────────────────────────────────────────────────────────────
+
+  7.13  UNAUTHORIZED ACCESS (No Token)
+  ────────────────────────────────────
+  Request:
+    GET http://localhost:8080/api/employees
+    (No Authorization header)
+
+  Response (401 Unauthorized):
+    {
+      "success": false,
+      "message": "Unauthorized: Full authentication is required",
+      "timestamp": "2026-05-01T23:11:00"
+    }
+
+================================================================================
+8. JWT AUTHENTICATION FLOW
+================================================================================
+
+  ┌──────────┐     Register/Login     ┌──────────────┐
+  │  Client  │ ────────────────────→  │  Auth        │
+  │ (Postman │                        │  Controller  │
+  │  / App)  │ ←────────────────────  │              │
+  └──────────┘   JWT Token Response   └──────┬───────┘
+       │                                     │
+       │  API Request with                   │ Validates via
+       │  Authorization: Bearer <token>      │ AuthenticationManager
+       │                                     ↓
+       │                              ┌──────────────┐
+       │                              │ UserDetails  │
+       │                              │ Service      │
+       │                              │ (Oracle DB)  │
+       │                              └──────────────┘
+       │
+       ↓
+  ┌──────────────────┐    Validate Token    ┌──────────────┐
+  │ JWT Auth Filter  │ ──────────────────→  │ JWT Token    │
+  │ (Every Request)  │                      │ Provider     │
+  │                  │ ←──────────────────  │              │
+  └────────┬─────────┘   Valid / Invalid    └──────────────┘
+           │
+           │ If Valid → Set SecurityContext
+           ↓
+  ┌──────────────────┐                      ┌──────────────┐
+  │ Employee         │  Business Logic      │ Employee     │
+  │ Controller       │ ──────────────────→  │ Service      │
+  │                  │                      │              │
+  │                  │ ←──────────────────  │              │
+  └──────────────────┘   Response DTO       └──────┬───────┘
+                                                   │
+                                                   ↓
+                                            ┌──────────────┐
+                                            │ Employee     │
+                                            │ Repository   │
+                                            │ (Oracle 21c) │
+                                            └──────────────┘
+
+================================================================================
+9. HOW TO RUN THE PROJECT
+================================================================================
+
+  Prerequisites:
+    1. Java 17+ installed
+    2. Maven 3.8+ installed
+    3. Oracle 21c database running on localhost:1521
+    4. Pluggable database: XEPDB1
+
+  Steps:
+    1. Update database credentials in:
+       src/main/resources/application.properties
+
+       spring.datasource.url=jdbc:oracle:thin:@localhost:1521/XEPDB1
+       spring.datasource.username=YOUR_USERNAME
+       spring.datasource.password=YOUR_PASSWORD
+
+    2. Build the project:
+       mvn clean install
+
+    3. Run the project:
+       mvn spring-boot:run
+
+    4. The application starts at:
+       http://localhost:8080
+
+    5. Test using Postman or curl:
+       - First register: POST /api/auth/register
+       - Then login:     POST /api/auth/login  → copy the JWT token
+       - Use token in Authorization header for all employee endpoints
+
+================================================================================
+10. ERROR HANDLING
+================================================================================
+
+  The application provides consistent error responses:
+
+  │ HTTP Status │ Scenario                                         │
+  ├─────────────┼──────────────────────────────────────────────────┤
+  │ 200 OK      │ Successful GET, PUT, DELETE operations           │
+  │ 201 Created │ Successful POST (create) operations              │
+  │ 400 Bad Req │ Validation errors, duplicate email/username      │
+  │ 401 Unauth  │ Missing/invalid JWT token, bad credentials       │
+  │ 404 Not Fnd │ Employee/Resource not found                      │
+  │ 500 Error   │ Unexpected server errors                         │
+
+================================================================================
+11. CONFIGURATION REFERENCE
+================================================================================
+
+  application.properties key settings:
+
+  │ Property                              │ Description                │
+  ├───────────────────────────────────────┼────────────────────────────┤
+  │ server.port                           │ Server port (default 8080) │
+  │ spring.datasource.url                 │ Oracle DB connection URL   │
+  │ spring.datasource.username            │ Oracle DB username         │
+  │ spring.datasource.password            │ Oracle DB password         │
+  │ spring.jpa.hibernate.ddl-auto         │ Auto DDL (update)          │
+  │ app.jwt.secret                        │ JWT signing secret key     │
+  │ app.jwt.expiration-ms                 │ Token expiry (24 hrs)      │
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================
